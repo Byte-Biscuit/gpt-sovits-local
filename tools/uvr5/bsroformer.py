@@ -220,6 +220,11 @@ class Roformer_Loader:
             mix = np.mean(mix, axis=0)  # if more than 2 channels, take mean
             print("Warning: Track has more than 1 channels, but model is mono, taking mean of all channels.")
 
+        # librosa 对单声道文件返回 1D 数组 (N,)，但 stereo 模型要求 (2, N)；
+        # 此处将单声道复制为双声道，避免后续 padding 因维度不足而崩溃
+        if isstereo and mix.ndim == 1:
+            mix = np.stack([mix, mix], axis=0)
+
         mix_orig = mix.copy()
 
         mixture = torch.tensor(mix, dtype=torch.float32)
