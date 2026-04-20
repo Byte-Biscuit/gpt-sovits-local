@@ -50,6 +50,7 @@ dependencies = [
     "transformers>=4.43,<=4.50",
     "wordsegment>=1.3.1",
     "x-transformers>=2.18.8",
+    "torchcodec>=0.11.1",
 ]
 
 [[tool.uv.index]]

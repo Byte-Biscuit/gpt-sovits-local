@@ -55,6 +55,8 @@ def download_gpt_sovits_models():
             # ── SoVITS v2ProPlus 预训练权重 ───────────────────────────
             "v2Pro/s2Gv2ProPlus.pth",  # 生成器（Step4 VQ量化 + 微调初始权重）
             "v2Pro/s2Dv2ProPlus.pth",  # 判别器（微调对抗训练用）
+            "v2Pro/s2Gv2Pro.pth",
+            "v2Pro/s2Dv2Pro.pth",
             # ── GPT 预训练权重 ────────────────────────────────────────
             "gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
         ],

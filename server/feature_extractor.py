@@ -85,8 +85,6 @@ logger = logging.getLogger("server.feature_extractor")
 BERT_DIR = os.path.join(PRETRAINED_DIR, "chinese-roberta-wwm-ext-large")
 HUBERT_DIR = os.path.join(PRETRAINED_DIR, "chinese-hubert-base")
 SV_MODEL_PATH = os.path.join(PRETRAINED_DIR, "sv", "pretrained_eres2netv2w24s4ep4.ckpt")
-# v2Pro SoVITS 生成器（用于第 4 步量化语义 token）
-S2G_V2PRO_PATH = os.path.join(PRETRAINED_DIR, "v2Pro", "s2Gv2Pro.pth")
 # SoVITS 模型结构配置文件
 S2_CONFIG_PATH = os.path.join(_gpt_sovits_dir, "configs", "s2.json")
 
@@ -520,7 +518,7 @@ class FeatureExtractor:
         from module.models import SynthesizerTrn
 
         s2g_path = (
-            S2G_V2PRO_PATH
+            os.path.join(PRETRAINED_DIR, self.version, f"s2G{self.version}.pth")
             if self.version in ("v2Pro", "v2ProPlus")
             else os.path.join(PRETRAINED_DIR, "gsv-v2final-pretrained", "s2G2333k.pth")
         )
