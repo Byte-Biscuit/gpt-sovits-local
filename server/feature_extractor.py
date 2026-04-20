@@ -416,8 +416,13 @@ class FeatureExtractor:
         class _SVWrapper:
             def __init__(self, path, device, is_half):
                 state = torch.load(path, map_location="cpu")
-                self.model = ERes2NetV2(**state["model_args"])
-                self.model.load_state_dict(state["model"])
+                # 原ckpt可能只是一系列权重OrderedDict或者包含model_args的dict
+                if "model_args" in state:
+                    self.model = ERes2NetV2(**state["model_args"])
+                    self.model.load_state_dict(state["model"])
+                else:
+                    self.model = ERes2NetV2(baseWidth=24, scale=4, expansion=4)
+                    self.model.load_state_dict(state)
                 if is_half:
                     self.model = self.model.half()
                 self.model = self.model.to(device).eval()
