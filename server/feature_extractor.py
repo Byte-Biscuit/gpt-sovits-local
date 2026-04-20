@@ -407,51 +407,8 @@ class FeatureExtractor:
         if self._sv_model is not None:
             return self._sv_model
 
-        import sys
-
-        # --- 针对 Colab /.venv 虚拟环境的修复：torchaudio 二进制包无法自动找到 nvidia 的 CUDA 依赖 ---
-        try:
-            import torchaudio
-        except OSError:
-            import ctypes
-            import glob
-            import os
-
-            # 1. 扩大搜索范围，包含 Colab 默认系统路径
-            search_paths = [
-                "/usr/local/cuda/lib64/libcudart.so.*",
-                "/usr/local/cuda-*/targets/x86_64-linux/lib/libcudart.so.*",
-            ]
-            for p in sys.path:
-                search_paths.append(
-                    os.path.join(p, "nvidia", "cuda_runtime", "lib", "libcudart.so.*")
-                )
-
-            found_lib = None
-            for pattern in search_paths:
-                matches = glob.glob(pattern)
-                valid_matches = [m for m in matches if not m.endswith(".so.13")]
-                if valid_matches:
-                    found_lib = valid_matches[0]
-                    break
-
-            if found_lib:
-                try:
-                    # 2. 跨版本自动兼容 (假设 torchaudio 硬性请求 .13，而系统只有 .12)
-                    target_symlink = "/usr/lib/x86_64-linux-gnu/libcudart.so.13"
-                    if not os.path.exists(target_symlink):
-                        os.system(f"ln -sf {found_lib} {target_symlink}")
-
-                    # 3. 强行将其加载到全局可见空间
-                    ctypes.CDLL(found_lib, mode=ctypes.RTLD_GLOBAL)
-                    if os.path.exists(target_symlink):
-                        ctypes.CDLL(target_symlink, mode=ctypes.RTLD_GLOBAL)
-                except Exception:
-                    pass
-
-            import torchaudio  # 重试引入
-
         import kaldi as Kaldi  # type: ignore # noqa
+        import librosa
         from ERes2NetV2 import ERes2NetV2  # type: ignore # noqa
 
         logger.info("加载 SV 模型: %s", SV_MODEL_PATH)
@@ -467,12 +424,12 @@ class FeatureExtractor:
                 self.device = device
                 self.is_half = is_half
                 self._kaldi = Kaldi
-                self._torchaudio = torchaudio
 
             def get_feature(self, wav_path: str) -> torch.Tensor:
-                waveform, sr = self._torchaudio.load(wav_path)
-                if sr != 16000:
-                    waveform = self._torchaudio.functional.resample(waveform, sr, 16000)
+                # 放弃发生依赖问题的 torchaudio，改用 librosa 进行读取和重采样
+                waveform, sr = librosa.load(wav_path, sr=16000)
+                waveform = torch.from_numpy(waveform).unsqueeze(0)  # shape: (1, T)
+
                 feat = self._kaldi.fbank(
                     waveform,
                     num_mel_bins=80,
