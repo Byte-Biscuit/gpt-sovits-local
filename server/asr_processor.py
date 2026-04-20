@@ -24,8 +24,10 @@ import sys
 import traceback
 from pathlib import Path
 
-# Inject tools/asr path into sys.path to resolve internal module references if needed
+from tqdm import tqdm
+
 ASR_TOOLS_PATH = str(Path(__file__).parent.parent / "tools" / "asr")
+
 if ASR_TOOLS_PATH not in sys.path:
     sys.path.append(ASR_TOOLS_PATH)
 
@@ -233,12 +235,17 @@ class ASRProcessor:
         )
 
         lines = []
-        for wav in wav_files:
-            file_path = os.path.join(input_dir, wav)
-            result = self._transcribe_file(file_path, speaker)
-            if result:
-                lines.append(result)
-                logger.debug("✓ %s", wav)
+        failed = 0
+        with tqdm(total=len(wav_files), desc=f"ASR [{speaker}]", unit="file") as pbar:
+            for wav in wav_files:
+                file_path = os.path.join(input_dir, wav)
+                result = self._transcribe_file(file_path, speaker)
+                if result:
+                    lines.append(result)
+                else:
+                    failed += 1
+                pbar.set_postfix(success=len(lines), failed=failed)
+                pbar.update(1)
 
         if not lines:
             logger.warning("All files failed or returned empty results")
@@ -298,11 +305,17 @@ class ASRProcessor:
         )
 
         lines = []
-        for wav in wav_files:
-            file_path = os.path.join(input_dir, wav)
-            result = self._transcribe_file(file_path, speaker)
-            if result:
-                lines.append(result)
+        failed = 0
+        with tqdm(total=len(wav_files), desc=f"ASR [{speaker}]", unit="file") as pbar:
+            for wav in wav_files:
+                file_path = os.path.join(input_dir, wav)
+                result = self._transcribe_file(file_path, speaker)
+                if result:
+                    lines.append(result)
+                else:
+                    failed += 1
+                pbar.set_postfix(success=len(lines), failed=failed)
+                pbar.update(1)
 
         if not lines:
             logger.warning("All files failed or returned empty results")
@@ -353,19 +366,8 @@ if __name__ == "__main__":
     processor = ASRProcessor(language=LANGUAGE)
 
     try:
-        processor.transcribe_speaker(SPEAKER_DIR)
+        list_file = processor.transcribe_speaker(SPEAKER_DIR)
+        if list_file:
+            logger.info("标注文件已生成: %s", list_file)
     finally:
         processor.release_model()
-    MODEL_PATH = DEFAULT_WHISPER_MODEL_DIR
-    # ----------------------------------------
-
-    processor = ASRProcessor(
-        model_path=MODEL_PATH,
-        language=LANGUAGE,
-    )
-
-    list_file = processor.transcribe_speaker(SPEAKER_DIR)
-    if list_file:
-        logger.info("标注文件已生成: %s", list_file)
-
-    processor.release_model()
