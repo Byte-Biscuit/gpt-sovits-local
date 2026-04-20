@@ -85,7 +85,7 @@ logger = logging.getLogger("server.feature_extractor")
 BERT_DIR = os.path.join(PRETRAINED_DIR, "chinese-roberta-wwm-ext-large")
 HUBERT_DIR = os.path.join(PRETRAINED_DIR, "chinese-hubert-base")
 SV_MODEL_PATH = os.path.join(PRETRAINED_DIR, "sv", "pretrained_eres2netv2w24s4ep4.ckpt")
-# SoVITS 模型结构配置文件
+# SoVITS 模型结构配置文件 (默认)
 S2_CONFIG_PATH = os.path.join(_gpt_sovits_dir, "configs", "s2.json")
 
 # 归一化参数（与原始脚本保持一致）
@@ -524,7 +524,14 @@ class FeatureExtractor:
         )
 
         logger.info("加载 SoVITS VQ 模型: %s", s2g_path)
-        hps = utils.get_hparams_from_file(S2_CONFIG_PATH)
+        
+        config_name = f"s2{self.version}.json" if self.version in ("v2Pro", "v2ProPlus") else "s2.json"
+        config_path = os.path.join(_gpt_sovits_dir, "configs", config_name)
+        if not os.path.exists(config_path):
+            logger.warning("模型结构配置 %s 不存在，回退到默认 %s", config_path, S2_CONFIG_PATH)
+            config_path = S2_CONFIG_PATH
+            
+        hps = utils.get_hparams_from_file(config_path)
         vq = SynthesizerTrn(
             hps.data.filter_length // 2 + 1,
             hps.train.segment_size // hps.data.hop_length,
