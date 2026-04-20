@@ -417,15 +417,38 @@ class FeatureExtractor:
             import glob
             import os
 
-            # 动态搜索系统中安装的 CUDA Runtime 库（例如 libcudart.so.12 / libcudart.so.13）
+            # 1. 扩大搜索范围，包含 Colab 默认系统路径
+            search_paths = [
+                "/usr/local/cuda/lib64/libcudart.so.*",
+                "/usr/local/cuda-*/targets/x86_64-linux/lib/libcudart.so.*",
+            ]
             for p in sys.path:
-                cudart_pattern = os.path.join(
-                    p, "nvidia", "cuda_runtime", "lib", "libcudart.so.*"
+                search_paths.append(
+                    os.path.join(p, "nvidia", "cuda_runtime", "lib", "libcudart.so.*")
                 )
-                matches = glob.glob(cudart_pattern)
-                if matches:
-                    ctypes.cdll.LoadLibrary(matches[0])
+
+            found_lib = None
+            for pattern in search_paths:
+                matches = glob.glob(pattern)
+                valid_matches = [m for m in matches if not m.endswith(".so.13")]
+                if valid_matches:
+                    found_lib = valid_matches[0]
                     break
+
+            if found_lib:
+                try:
+                    # 2. 跨版本自动兼容 (假设 torchaudio 硬性请求 .13，而系统只有 .12)
+                    target_symlink = "/usr/lib/x86_64-linux-gnu/libcudart.so.13"
+                    if not os.path.exists(target_symlink):
+                        os.system(f"ln -sf {found_lib} {target_symlink}")
+
+                    # 3. 强行将其加载到全局可见空间
+                    ctypes.CDLL(found_lib, mode=ctypes.RTLD_GLOBAL)
+                    if os.path.exists(target_symlink):
+                        ctypes.CDLL(target_symlink, mode=ctypes.RTLD_GLOBAL)
+                except Exception:
+                    pass
+
             import torchaudio  # 重试引入
 
         import kaldi as Kaldi  # type: ignore # noqa
