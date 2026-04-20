@@ -22,10 +22,17 @@ Model Types and Corresponding Classes:
 
 import logging
 import os
+import sys
+from pathlib import Path
 
-import torch
+# Inject tools/uvr5 path into sys.path before business imports to resolve 'lib' module reference
+UVR5_PATH = str(Path(__file__).parent.parent / "tools" / "uvr5")
+if UVR5_PATH not in sys.path:
+    sys.path.append(UVR5_PATH)
 
-from server.config import MODELS_DIR
+import torch  # noqa: E402
+
+from server.config import MODELS_DIR  # noqa: E402
 from server.logger import setup_logging  # noqa: E402
 from tools.uvr5.bsroformer import Roformer_Loader  # noqa: E402
 from tools.uvr5.vr import AudioPre, AudioPreDeEcho  # noqa: E402
