@@ -1,70 +1,64 @@
 """
-UVR5 人声分离处理模块
+UVR5 Vocal Separation Module
 
-职责：
-    对切片后的音频执行人声/伴奏分离，输出用于训练的纯净干声。
+Responsibilities:
+    Performs vocal/instrumental separation on sliced audio to output clean vocals for training.
 
-目录约定：
-    models/uvr5/                             ← 模型权重文件存放目录
-    assets/{speaker}/sliced/          ← 输入（切片结果）
-    assets/{speaker}/vocals/          ← 输出干声（送入 ASR 打标）
-    assets/{speaker}/instrumental/    ← 输出伴奏（训练时可丢弃）
+Directory Conventions:
+    models/uvr5/                             ← Model weights storage directory
+    assets/{speaker}/sliced/          ← Input (sliced results)
+    assets/{speaker}/vocals/          ← Output vocals (sent to ASR for labeling)
+    assets/{speaker}/instrumental/    ← Output accompaniment (can be discarded during training)
 
-推荐处理链（单人音色克隆）：
-    1. HP5_only_main_vocal  → 分离主唱干声
-    2. VR-DeEchoNormal      → 去混响（录音环境干净可跳过）
+Recommended Processing Chain (Single Character Cloning):
+    1. HP5_only_main_vocal  → Separate lead vocals
+    2. VR-DeEchoNormal      → De-reverb (can be skipped if the recording environment is clean)
 
-模型类型与对应类：
-    HP2_all_vocals / HP5_only_main_vocal       → AudioPre（vr.py）
-    VR-DeEchoNormal / VR-DeEchoAggressive     → AudioPreDeEcho（vr.py）
-    bs_roformer_* / *mel_band_roformer*        → Roformer_Loader（bsroformer.py）
+Model Types and Corresponding Classes:
+    HP2_all_vocals / HP5_only_main_vocal       → AudioPre (vr.py)
+    VR-DeEchoNormal / VR-DeEchoAggressive     → AudioPreDeEcho (vr.py)
+    bs_roformer_* / *mel_band_roformer*        → Roformer_Loader (bsroformer.py)
 """
 
 import logging
 import os
-import sys
 
 import torch
 
-# 将项目根目录加入 sys.path，确保 tools.uvr5 可被导入
-_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-
-# tools/uvr5 目录也需在路径中，因为 vr.py 内部使用相对 import
-_uvr5_dir = os.path.join(_project_root, "tools", "uvr5")
-if _uvr5_dir not in sys.path:
-    sys.path.insert(0, _uvr5_dir)
-
+from server.config import MODELS_DIR
 from server.logger import setup_logging  # noqa: E402
 from tools.uvr5.bsroformer import Roformer_Loader  # noqa: E402
 from tools.uvr5.vr import AudioPre, AudioPreDeEcho  # noqa: E402
 
 logger = logging.getLogger("server.uvr5_processor")
 
-# 模型权重统一存放在项目根目录下的 models/uvr5/
-MODELS_DIR = os.path.join(_project_root, "models", "uvr5")
+# Model weights are uniformly stored in the uvr5 directory under config.MODELS_DIR
+UVR5_MODELS_DIR = os.path.join(MODELS_DIR, "uvr5")
 
-# 各模型文件名（与 models/uvr5/ 目录中的文件名对应）
-MODEL_HP5 = "HP5_only_main_vocal.pth"  # 只保留主唱，训练数据首选
-MODEL_HP2 = "HP2_all_vocals.pth"  # 保留所有人声（含和声）
-MODEL_DEECHO_NORMAL = "VR-DeEchoNormal.pth"  # 温和去混响
-MODEL_DEECHO_AGGRESSIVE = "VR-DeEchoAggressive.pth"  # 强力去混响
-# Roformer 系列（高质量，需 GPU，.ckpt 与同名 .yaml 必须成对存放）
-MODEL_BS_ROFORMER = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"  # 综合质量最高
-MODEL_MEL_ROFORMER = "kim_mel_band_roformer.ckpt"  # 人声细节最优，TTS 首选
+# Model filenames (corresponding to filenames in the MODELS_DIR/uvr5/ directory)
+MODEL_HP5 = "HP5_only_main_vocal.pth"  # Lead vocals only, preferred for training data
+MODEL_HP2 = "HP2_all_vocals.pth"  # All vocals (including backing vocals)
+MODEL_DEECHO_NORMAL = "VR-DeEchoNormal.pth"  # Gentle de-reverb
+MODEL_DEECHO_AGGRESSIVE = "VR-DeEchoAggressive.pth"  # Aggressive de-reverb
+# Roformer series (high quality, requires GPU, .ckpt and same-named .yaml must be stored in pairs)
+MODEL_BS_ROFORMER = (
+    "model_bs_roformer_ep_317_sdr_12.9755.ckpt"  # Highest overall quality
+)
+MODEL_MEL_ROFORMER = (
+    "kim_mel_band_roformer.ckpt"  # Best vocal detail, preferred for TTS
+)
 
 
 def _detect_device() -> tuple[str, bool]:
     """
-    自动选择推理设备。
+    Automatically select the inference device.
 
     Returns
     -------
     device : str
-        "cuda" 或 "cpu"
+        "cuda" or "cpu"
     is_half : bool
-        GPU 时启用半精度（FP16）以节省显存；CPU 时强制 False
+        Enable half precision (FP16) on GPU to save VRAM; forced False on CPU
     """
     if torch.cuda.is_available():
         return "cuda", True
@@ -73,27 +67,27 @@ def _detect_device() -> tuple[str, bool]:
 
 class UVR5Processor:
     """
-    封装 UVR5 人声分离流程。
+    Encapsulates UVR5 vocal separation workflow.
 
-    模型按需懒加载（首次调用时才载入显存），避免不必要的显存占用。
+    Models are lazy-loaded (only loaded into VRAM on first call) to avoid unnecessary VRAM usage.
 
     Parameters
     ----------
     models_dir : str
-        模型权重目录，默认 models/uvr5/
+        Model weights directory, default models/uvr5/
     agg : int
-        人声提取激进程度 0~20，越大提取越激进但可能损失音质，默认 10
+        Vocal extraction aggressiveness (0~20), higher is more aggressive but may degrade quality, default 10
     output_format : str
-        输出音频格式，"wav" 或 "flac"，默认 "wav"
+        Output audio format, "wav" or "flac", default "wav"
     device : str | None
-        推理设备，None 表示自动检测
+        Inference device, None for auto-detection
     is_half : bool | None
-        是否使用半精度，None 表示自动（GPU 时 True，CPU 时 False）
+        Whether to use half precision, None for auto (True on GPU, False on CPU)
     """
 
     def __init__(
         self,
-        models_dir: str = MODELS_DIR,
+        models_dir: str = UVR5_MODELS_DIR,
         agg: int = 10,
         output_format: str = "wav",
         device: str | None = None,
@@ -103,32 +97,32 @@ class UVR5Processor:
         self.agg = agg
         self.output_format = output_format
 
-        # 自动检测或使用指定设备
+        # Auto-detect or use specified device
         auto_device, auto_half = _detect_device()
         self.device = device if device is not None else auto_device
         self.is_half = is_half if is_half is not None else auto_half
 
         logger.info(
-            "UVR5Processor 初始化 | 设备=%s | 半精度=%s | 模型目录=%s",
+            "UVR5Processor Init | Device=%s | HalfPrecision=%s | ModelsDir=%s",
             self.device,
             self.is_half,
             self.models_dir,
         )
 
-        # 懒加载缓存：避免重复加载同一模型
+        # Lazy load cache: avoid reloading the same model
         self._model_cache: dict[str, AudioPre | AudioPreDeEcho | Roformer_Loader] = {}
 
     # ------------------------------------------------------------------
-    # 私有方法
+    # Private Methods
     # ------------------------------------------------------------------
 
     def _model_path(self, filename: str) -> str:
-        """拼接模型完整路径，并检查文件是否存在。"""
+        """Joins model filename with models_dir and checks if file exists."""
         path = os.path.join(self.models_dir, filename)
         if not os.path.exists(path):
             raise FileNotFoundError(
-                f"模型文件不存在: {path}\n"
-                f"请先运行 python -m server.models_loader 下载模型权重。"
+                f"Model file not found: {path}\n"
+                f"Please run 'python -m server.models_loader' to download model weights first."
             )
         return path
 
@@ -136,22 +130,22 @@ class UVR5Processor:
         self, model_filename: str
     ) -> AudioPre | AudioPreDeEcho | Roformer_Loader:
         """
-        懒加载模型：已加载的模型从缓存中复用，避免重复占用显存。
+        Lazy-loads model: reuses from cache if already loaded to avoid redundant memory usage.
 
-        模型类型判断优先级（依据文件名）：
-          1. 含 'roformer'              → Roformer_Loader（bs_roformer / mel_band_roformer）
-          2. 含 'DeEcho' 或 'DeReverb' → AudioPreDeEcho（去混响/回声）
-          3. 其余                       → AudioPre（标准人声/伴奏分离）
+        Model type inference priority (based on filename):
+          1. Contains 'roformer'              → Roformer_Loader (bs_roformer / mel_band_roformer)
+          2. Contains 'DeEcho' or 'DeReverb' → AudioPreDeEcho (de-reverb/de-echo)
+          3. Others                           → AudioPre (standard vocal/instrumental separation)
         """
         if model_filename in self._model_cache:
             return self._model_cache[model_filename]
 
         path = self._model_path(model_filename)
-        logger.info("正在加载模型: %s", model_filename)
+        logger.info("Loading model: %s", model_filename)
 
         name_lower = model_filename.lower()
         if "roformer" in name_lower:
-            # Roformer 系列需要同名 .yaml 配置文件与 .ckpt 文件成对存放
+            # Roformer series requires same-named .yaml config file and .ckpt file stored in pairs
             config_path = os.path.splitext(path)[0] + ".yaml"
             model = Roformer_Loader(
                 model_path=path,
@@ -175,7 +169,7 @@ class UVR5Processor:
             )
 
         self._model_cache[model_filename] = model
-        logger.info("模型加载完成: %s", model_filename)
+        logger.info("Model loaded successfully: %s", model_filename)
         return model
 
     def _run_separation(
@@ -186,9 +180,9 @@ class UVR5Processor:
         ins_dir: str,
     ) -> list[str]:
         """
-        对 input_dir 下所有 WAV 文件执行分离，返回成功处理的文件列表。
+        Performs separation on all WAV files under input_dir, returns list of successfully processed files.
 
-        ins_dir 传 None 可跳过伴奏输出以节省磁盘空间。
+        Pass None to ins_dir to skip instrumental output and save disk space.
         """
         os.makedirs(vocal_dir, exist_ok=True)
         os.makedirs(ins_dir, exist_ok=True)
@@ -199,18 +193,18 @@ class UVR5Processor:
             f for f in os.listdir(input_dir) if f.lower().endswith(".wav")
         )
         if not wav_files:
-            logger.warning("输入目录中未找到 WAV 文件: %s", input_dir)
+            logger.warning("No WAV files found in input directory: %s", input_dir)
             return []
 
         processed = []
         for wav in wav_files:
             inp = os.path.join(input_dir, wav)
-            logger.info("处理: %s", inp)
+            logger.info("Processing: %s", inp)
             try:
-                # 三个模型类的 _path_audio_ 参数名和顺序不同，必须分别调用：
+                # Parameters and order of _path_audio_ differ among the three model classes:
                 #   AudioPre:      (music_file, ins_root,   vocal_root, format)
-                #   AudioPreDeEcho:(music_file, vocal_root, ins_root,   format)  ← vocal/ins 顺序相反
-                #   Roformer_Loader:(input,    others_root, vocal_root, format)  ← 参数名不同
+                #   AudioPreDeEcho:(music_file, vocal_root, ins_root,   format)  ← vocal/ins order swapped
+                #   Roformer_Loader:(input,    others_root, vocal_root, format)  ← parameter names differ
                 if isinstance(model, Roformer_Loader):
                     model._path_audio_(
                         input=inp,
@@ -234,13 +228,15 @@ class UVR5Processor:
                     )
                 processed.append(inp)
             except Exception as exc:
-                logger.error("分离失败: %s | 原因: %s", inp, exc)
+                logger.error("Separation failed: %s | Reason: %s", inp, exc)
 
-        logger.info("分离完成，共处理 %d 个文件 -> %s", len(processed), vocal_dir)
+        logger.info(
+            "Separation complete, %d files processed -> %s", len(processed), vocal_dir
+        )
         return processed
 
     # ------------------------------------------------------------------
-    # 公开 API
+    # Public API
     # ------------------------------------------------------------------
 
     def separate_vocals(
@@ -252,25 +248,25 @@ class UVR5Processor:
         model_filename: str = MODEL_BS_ROFORMER,
     ) -> list[str]:
         """
-        对音色目录执行人声/伴奏分离。
+        Performs vocal/instrumental separation on a speaker directory.
 
         Parameters
         ----------
         speaker_dir : str
-            音色根目录，例如 assets/wangliqun
+            Speaker root directory, e.g., assets/wangliqun
         input_subdir : str
-            输入子目录（切片结果），默认 sliced
+            Input subdirectory (sliced results), default "sliced"
         vocal_subdir : str
-            干声输出子目录，默认 vocals
+            Vocal output subdirectory, default "vocals"
         ins_subdir : str
-            伴奏输出子目录，默认 instrumental
+            Instrumental output subdirectory, default "instrumental"
         model_filename : str
-            使用的模型文件名，默认 model_bs_roformer_ep_317_sdr_12.9755.ckpt
+            Model filename to use, default model_bs_roformer_ep_317_sdr_12.9755.ckpt
 
         Returns
         -------
         list[str]
-            成功处理的输入文件路径列表
+            List of successfully processed input file paths
         """
         speaker_dir = os.path.abspath(speaker_dir)
         return self._run_separation(
@@ -288,23 +284,23 @@ class UVR5Processor:
         model_filename: str = MODEL_BS_ROFORMER,
     ) -> list[str]:
         """
-        直接指定输入/输出目录执行人声分离，不依赖 speaker_dir 约定。
+        Directly specify input/output directories for vocal separation, without speaker_dir convention.
 
         Parameters
         ----------
         input_dir : str
-            切片 WAV 文件所在目录（完整路径）
+            Directory of sliced WAV files (full path)
         vocal_dir : str
-            干声输出目录（完整路径，不存在时自动创建）
+            Vocal output directory (full path, created if not exists)
         ins_dir : str
-            伴奏输出目录（完整路径，不存在时自动创建）
+            Instrumental output directory (full path, created if not exists)
         model_filename : str
-            使用的模型文件名，默认 MODEL_BS_ROFORMER
+            Model filename to use, default MODEL_BS_ROFORMER
 
         Returns
         -------
         list[str]
-            成功处理的输入文件路径列表
+            List of successfully processed input file paths
         """
         return self._run_separation(
             model_filename=model_filename,
@@ -322,20 +318,20 @@ class UVR5Processor:
         aggressive: bool = False,
     ) -> list[str]:
         """
-        对干声目录执行去混响/回声处理（可选步骤）。
+        Performs de-reverb/de-echo processing on the vocals directory (optional step).
 
         Parameters
         ----------
         speaker_dir : str
-            音色根目录
+            Speaker root directory
         input_subdir : str
-            输入子目录（人声分离结果），默认 vocals
+            Input subdirectory (vocal separation results), default "vocals"
         vocal_subdir : str
-            去混响后输出子目录，默认 vocals_clean
+            De-reverbed output subdirectory, default "vocals_clean"
         ins_subdir : str
-            混响成分输出子目录，默认 vocals_echo
+            Reverb component output subdirectory, default "vocals_echo"
         aggressive : bool
-            True 使用强力去混响，False 使用温和模式，默认 False
+            True for aggressive de-reverb, False for gentle mode, default False
         """
         model_filename = MODEL_DEECHO_AGGRESSIVE if aggressive else MODEL_DEECHO_NORMAL
         speaker_dir = os.path.abspath(speaker_dir)
@@ -347,31 +343,46 @@ class UVR5Processor:
         )
 
     def release_models(self) -> None:
-        """释放所有已加载模型的显存，在处理完成后调用。"""
+        """Releases VRAM for all loaded models, call after processing is finished."""
         self._model_cache.clear()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        logger.info("模型缓存已释放")
+        logger.info("Model cache released")
 
 
 if __name__ == "__main__":
     setup_logging()
 
-    # ---- 在此修改要处理的音色目录和参数 ----
-    SPEAKER_DIR = "assets/wangliqun"
-    AGG = 10  # 人声提取激进程度 0~20
-    REMOVE_ECHO = False  # 是否执行去混响（录音干净可关闭）
-    ECHO_MODE = False  # True=强力去混响, False=温和去混响
+    from server.config import ASSETS_DIR
+
+    # ---- Interactive Speaker Name Input ----
+    default_speaker = "wangliqun"
+    user_input = input(
+        f"Please enter speaker name (Press Enter to use default '{default_speaker}'): "
+    ).strip()
+    SPEAKER_NAME = user_input if user_input else default_speaker
+
+    # Join using config.ASSETS_DIR
+    SPEAKER_DIR = os.path.join(ASSETS_DIR, SPEAKER_NAME)
+
+    # ---- Processing Parameters ----
+    AGG = 10  # Vocal extraction aggressiveness 0~20
+    REMOVE_ECHO = (
+        False  # Whether to perform de-reverb (set False if recording is clean)
+    )
+    ECHO_MODE = False  # True=Aggressive de-reverb, False=Gentle de-reverb
     # ----------------------------------------
 
     processor = UVR5Processor(agg=AGG)
 
-    # 第一步：人声/伴奏分离（使用 bs_roformer，models/uvr5/ 下需有对应 .ckpt）
+    # Step 1: Vocal/Instrumental Separation (BS-Roformer by default)
+    logger.info("Starting audio separation: %s", SPEAKER_DIR)
     processor.separate_vocals(SPEAKER_DIR)
 
-    # 第二步：去混响（可选）
+    # Step 2: De-reverb (Optional)
     if REMOVE_ECHO:
         processor.remove_echo(SPEAKER_DIR, aggressive=ECHO_MODE)
 
-    # 释放显存
+    # Release VRAM
     processor.release_models()
+    logger.info("All processing completed!")

@@ -4,6 +4,7 @@ import zipfile
 
 from huggingface_hub import hf_hub_download, snapshot_download
 
+from server.config import MODELS_DIR
 from server.logger import setup_logging
 from server.proxy import setup_proxy
 
@@ -11,31 +12,33 @@ logger = logging.getLogger("server.models_loader")
 
 
 def download_gpt_sovits_models():
-    logger.info("正在下载 GPT-SoVITS 核心预训练模型...")
-    # 核心预训练模型：包含 GPT 和 SoVITS 的基础权重 [1, 2]
+    logger.info("Downloading GPT-SoVITS core pretrained models...")
+    # Core pretrained models: foundation weights for GPT and SoVITS [1, 2]
     snapshot_download(
         repo_id="lj1995/GPT-SoVITS",
-        local_dir="GPT_SoVITS/pretrained_models",
+        local_dir=os.path.join(MODELS_DIR, "pretrained_models"),
         allow_patterns=[
             "chinese-hubert-base/*",
             "chinese-roberta-wwm-ext-large/*",
             "s1v2base_23k.ckpt",
             "s2G488k.pth",
-            "gsv-v2final-pretrained/*",  # 如果需要 V2 模型
+            "gsv-v2final-pretrained/*",  # If V2 models are needed
         ],
     )
 
 
 def download_g2pw_models():
-    logger.info("正在下载 G2PW 中文多音字对齐模型...")
-    # 用于提升中文 TTS 的多音字消歧准确性 [3, 4]
-    # 注意：如果 HF 仓库路径不同，请根据实际调整 repo_id
-    snapshot_download(repo_id="lj1995/G2PWModel", local_dir="GPT_SoVITS/text/G2PWModel")
+    logger.info("Downloading G2PW Chinese polyphone alignment models...")
+    # Used for improving Mandarin TTS polyphone disambiguation accuracy [3, 4]
+    snapshot_download(
+        repo_id="lj1995/G2PWModel",
+        local_dir=os.path.join(MODELS_DIR, "text", "G2PWModel"),
+    )
 
 
 def download_uvr5_weights():
-    logger.info("正在下载 UVR5 传统 VR 模型权重...")
-    # 用于从原始音频中提取纯净干声 [5, 6]
+    logger.info("Downloading UVR5 traditional VR model weights...")
+    # Used for extracting clean vocals from original audio [5, 6]
     uvr5_models = [
         "HP2_all_vocals.pth",
         "HP5_only_main_vocal.pth",
@@ -45,27 +48,29 @@ def download_uvr5_weights():
     ]
     for model in uvr5_models:
         hf_hub_download(
-            repo_id="lj1995/UVR5", filename=model, local_dir="models/uvr5"
+            repo_id="lj1995/UVR5",
+            filename=model,
+            local_dir=os.path.join(MODELS_DIR, "uvr5"),
         )
 
 
 def download_roformer_weights():
     """
-    下载 BS-Roformer 和 Mel-Band-Roformer 模型权重及配套配置文件。
+    Downloads BS-Roformer and Mel-Band-Roformer model weights and accompanying config files.
 
-    从 XXXXRT/GPT-SoVITS-Pretrained 下载 uvr5_weights.zip，
-    再从压缩包中提取 Roformer 相关文件到 models/uvr5/。
-    每个模型由 .ckpt（权重）和 .yaml（配置）两个文件组成，
-    文件名（除后缀外）必须完全一致，且文件名中须包含 'roformer'。
+    Downloads uvr5_weights.zip from XXXXRT/GPT-SoVITS-Pretrained,
+    then extracts Roformer-related files into models/uvr5/.
+    Each model consists of a .ckpt (weighs) and a .yaml (config) file,
+    filenames must match (excluding extension) and must contain 'roformer'.
     """
-    logger.info("正在下载 uvr5_weights.zip (XXXXRT/GPT-SoVITS-Pretrained)...")
+    logger.info("Downloading uvr5_weights.zip from XXXXRT/GPT-SoVITS-Pretrained...")
     zip_path = hf_hub_download(
         repo_id="XXXXRT/GPT-SoVITS-Pretrained",
         filename="uvr5_weights.zip",
-        cache_dir="models/_cache",
+        cache_dir=os.path.join(MODELS_DIR, "_cache"),
     )
 
-    # 需要从压缩包中提取的 Roformer 文件（.ckpt 与 .yaml 必须成对）
+    # Roformer files to extract (must be in .ckpt and .yaml pairs)
     roformer_targets = {
         "model_bs_roformer_ep_368_sdr_12.9628.ckpt",
         "model_bs_roformer_ep_368_sdr_12.9628.yaml",
@@ -75,51 +80,138 @@ def download_roformer_weights():
         "kim_mel_band_roformer.yaml",
     }
 
-    os.makedirs("models/uvr5", exist_ok=True)
+    uvr5_dir = os.path.join(MODELS_DIR, "uvr5")
+    os.makedirs(uvr5_dir, exist_ok=True)
     extracted = []
     with zipfile.ZipFile(zip_path, "r") as zf:
         for entry in zf.namelist():
             basename = os.path.basename(entry)
             if basename in roformer_targets:
-                out_path = os.path.join("models/uvr5", basename)
+                out_path = os.path.join(uvr5_dir, basename)
                 with zf.open(entry) as src, open(out_path, "wb") as dst:
                     dst.write(src.read())
                 extracted.append(basename)
-                logger.info("已提取: %s", basename)
+                logger.info("Extracted: %s", basename)
 
     if not extracted:
-        logger.warning("压缩包中未找到 Roformer 模型文件，请手动放置到 models/uvr5/")
+        logger.warning(
+            "Roformer model files not found in archive, please place manually in models/uvr5/"
+        )
     else:
-        logger.info("Roformer 模型提取完成，共 %d 个文件 -> models/uvr5/", len(extracted))
+        logger.info(
+            "Roformer extraction complete, %d files -> %s", len(extracted), uvr5_dir
+        )
 
 
 def download_asr_models():
-    logger.info("正在下载 Faster Whisper ASR 模型...")
-    # 用于自动语音识别打标，推荐 Large V3 以获得最高准确率 [7, 8]
+    logger.info("Downloading Faster Whisper ASR models...")
+    # For automatic ASR labeling, Large V3 is recommended for top accuracy [7, 8]
     snapshot_download(
         repo_id="Systran/faster-whisper-large-v3",
-        local_dir="tools/asr/models/faster-whisper-large-v3",
+        local_dir=os.path.join(MODELS_DIR, "asr", "faster-whisper-large-v3"),
     )
 
 
-if __name__ == "__main__":
-    # 1. 开启代理
+def run_download(use_proxy: bool = False):
+    """
+    Interactive download task with menu-based selection.
+
+    Parameters
+    ----------
+    use_proxy : bool
+        Whether to enable network proxy.
+    """
+    # 1. Setup logging
     setup_logging()
-    setup_proxy()
 
-    # 2. 创建必要目录（路径与 download_uvr5_weights 保持一致）
-    # os.makedirs("GPT_SoVITS/pretrained_models", exist_ok=True)
-    # os.makedirs("GPT_SoVITS/text/G2PWModel", exist_ok=True)
-    os.makedirs("models/uvr5", exist_ok=True)
-    # os.makedirs("tools/asr/models", exist_ok=True)
+    # 2. Setup proxy (if requested)
+    if use_proxy:
+        setup_proxy()
+    else:
+        logger.info("Proxy disabled, connecting directly to download servers.")
 
-    # 3. 执行下载
-    try:
-        # download_gpt_sovits_models()
-        # download_g2pw_models()
-        download_uvr5_weights()
-        # download_asr_models()
-        logger.info("所有模型下载并配置完成！你可以开始集成 FastAPI 服务了。")
-    except Exception as e:
-        logger.error("下载过程中出现错误: %s", e)
-        logger.error("请检查网络连接或代理设置。")
+    # 3. Ensure models root directory exists
+    os.makedirs(MODELS_DIR, exist_ok=True)
+
+    # 4. Interactive download loop
+    menu_template = """
+========================================
+    GPT-SoVITS Model Downloader Menu
+========================================
+Current Status: {proxy_status}
+----------------------------------------
+Enter command to download (case-insensitive):
+- ALL      : Download all models (except Roformer)
+- CORE     : GPT-SoVITS core pretrained models
+- UVR5     : UVR5 traditional VR weights
+- ROFORMER : High-quality Roformer models (extra)
+- ASR      : Faster Whisper ASR models
+- G2PW     : Chinese polyphone G2PW models
+- PROXY    : Toggle network proxy ON/OFF
+- EXIT     : Exit the downloader
+========================================
+"""
+
+    while True:
+        status_str = "Proxy ON" if use_proxy else "Proxy OFF"
+        print(menu_template.format(proxy_status=status_str))
+
+        cmd = (
+            input("\nEnter command [CORE/UVR5/ROFORMER/ASR/G2PW/ALL/PROXY/EXIT]: ")
+            .strip()
+            .upper()
+        )
+
+        if cmd == "EXIT":
+            logger.info("Exiting model downloader.")
+            break
+
+        if cmd == "PROXY":
+            use_proxy = not use_proxy
+            if use_proxy:
+                setup_proxy()
+                logger.info("Proxy settings applied.")
+            else:
+                for env_var in [
+                    "http_proxy",
+                    "https_proxy",
+                    "HTTP_PROXY",
+                    "HTTPS_PROXY",
+                ]:
+                    os.environ.pop(env_var, None)
+                logger.info("Proxy settings cleared.")
+            continue
+
+        try:
+            if cmd == "CORE":
+                download_gpt_sovits_models()
+            elif cmd == "UVR5":
+                download_uvr5_weights()
+            elif cmd == "ROFORMER":
+                download_roformer_weights()
+            elif cmd == "ASR":
+                download_asr_models()
+            elif cmd == "G2PW":
+                download_g2pw_models()
+            elif cmd == "ALL":
+                logger.info("Starting bulk download of pretrained models...")
+                download_gpt_sovits_models()
+                download_uvr5_weights()
+                download_asr_models()
+                download_g2pw_models()
+            else:
+                print(f"Unknown command: {cmd}, please try again.")
+                continue
+
+            logger.info("Task [%s] completed successfully!", cmd)
+        except Exception as e:
+            logger.error("Error during task [%s]: %s", cmd, e)
+            logger.error(
+                "Please check network or proxy settings (use_proxy=%s).", use_proxy
+            )
+
+
+if __name__ == "__main__":
+    # Default is proxy OFF, suitable for Colab.
+    # For local usage needing proxy, call run_download(use_proxy=True) instead.
+    run_download(use_proxy=False)

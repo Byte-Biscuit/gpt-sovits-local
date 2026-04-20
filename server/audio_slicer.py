@@ -19,6 +19,7 @@ import ffmpeg
 import numpy as np
 from scipy.io import wavfile
 
+from server.config import ASSETS_DIR
 from server.logger import setup_logging
 from tools.slicer2 import Slicer  # noqa: E402
 
@@ -159,21 +160,30 @@ class AudioSlicer:
 
 
 if __name__ == "__main__":
-    # 使用统一的日志配置，输出到文件 + console
+    # Use unified logging config, output to file + console
     setup_logging()
 
-    # ---- 在此修改要处理的音色目录和参数 ----
-    SPEAKER_DIR = "assets/wangliqun"
-    THRESHOLD = -34.0  # 静音判断阈值(dB)
-    MIN_LENGTH = 4000  # 每段最短时长(ms)
-    MIN_INTERVAL = 300  # 最短切割间隔(ms)
-    HOP_SIZE = 10  # 音量曲线帧步长(ms)
-    MAX_SIL_KEPT = 500  # 片段边缘保留静音(ms)
-    MAX_AMP = 0.9  # 归一化峰值
-    ALPHA = 0.25  # 归一化混合比例
+    # ---- Interactive Speaker Name Input ----
+    default_speaker = "wangliqun"
+    user_input = input(
+        f"Please enter speaker name (Press Enter to use default '{default_speaker}'): "
+    ).strip()
+    SPEAKER_NAME = user_input if user_input else default_speaker
+
+    # Path joining with config.ASSETS_DIR
+    SPEAKER_DIR = os.path.join(ASSETS_DIR, SPEAKER_NAME)
+
+    # ---- Other Processing Parameters ----
+    THRESHOLD = -34.0  # Silence threshold (dB)
+    MIN_LENGTH = 4000  # Minimum segment length (ms)
+    MIN_INTERVAL = 300  # Minimum cut interval (ms)
+    HOP_SIZE = 10  # RMS hop size (ms)
+    MAX_SIL_KEPT = 500  # Silence kept at edges (ms)
+    MAX_AMP = 0.9  # Normalization peak
+    ALPHA = 0.25  # Normalization blend ratio
     # ----------------------------------------
 
-    logger.info("开始处理音色目录: %s", SPEAKER_DIR)
+    logger.info("Starting speaker processing: %s", SPEAKER_DIR)
     slicer = AudioSlicer(
         threshold=THRESHOLD,
         min_length=MIN_LENGTH,
@@ -184,4 +194,4 @@ if __name__ == "__main__":
         alpha=ALPHA,
     )
     results = slicer.slice_speaker(SPEAKER_DIR)
-    logger.info("全部完成，共生成 %d 个片段", len(results))
+    logger.info("All finished, generated %d segments", len(results))
