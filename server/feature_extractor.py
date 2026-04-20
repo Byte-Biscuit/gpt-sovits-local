@@ -518,7 +518,7 @@ class FeatureExtractor:
         from module.models import SynthesizerTrn
 
         s2g_path = (
-            os.path.join(PRETRAINED_DIR, self.version, f"s2G{self.version}.pth")
+            os.path.join(PRETRAINED_DIR, "v2Pro", f"s2G{self.version}.pth")
             if self.version in ("v2Pro", "v2ProPlus")
             else os.path.join(PRETRAINED_DIR, "gsv-v2final-pretrained", "s2G2333k.pth")
         )
