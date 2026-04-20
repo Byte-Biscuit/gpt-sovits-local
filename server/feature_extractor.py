@@ -408,21 +408,25 @@ class FeatureExtractor:
             return self._sv_model
 
         import sys
+
         # --- 针对 Colab /.venv 虚拟环境的修复：torchaudio 二进制包无法自动找到 nvidia 的 CUDA 依赖 ---
         try:
             import torchaudio
-        except OSError as e:
-            if "libcudart.so" in str(e):
-                import os
-                import ctypes
-                for p in sys.path:
-                    cudart_path = os.path.join(p, "nvidia", "cuda_runtime", "lib", "libcudart.so.12")
-                    if os.path.exists(cudart_path):
-                        ctypes.cdll.LoadLibrary(cudart_path)
-                        break
-                import torchaudio  # 重试引入
-            else:
-                raise e
+        except OSError:
+            import ctypes
+            import glob
+            import os
+
+            # 动态搜索系统中安装的 CUDA Runtime 库（例如 libcudart.so.12 / libcudart.so.13）
+            for p in sys.path:
+                cudart_pattern = os.path.join(
+                    p, "nvidia", "cuda_runtime", "lib", "libcudart.so.*"
+                )
+                matches = glob.glob(cudart_pattern)
+                if matches:
+                    ctypes.cdll.LoadLibrary(matches[0])
+                    break
+            import torchaudio  # 重试引入
 
         import kaldi as Kaldi  # type: ignore # noqa
         from ERes2NetV2 import ERes2NetV2  # type: ignore # noqa
