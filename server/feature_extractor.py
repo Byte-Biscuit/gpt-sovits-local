@@ -408,7 +408,7 @@ class FeatureExtractor:
             return self._sv_model
 
         import kaldi as Kaldi  # type: ignore # noqa
-        import librosa
+        import torchaudio
         from ERes2NetV2 import ERes2NetV2  # type: ignore # noqa
 
         logger.info("加载 SV 模型: %s", SV_MODEL_PATH)
@@ -426,9 +426,11 @@ class FeatureExtractor:
                 self._kaldi = Kaldi
 
             def get_feature(self, wav_path: str) -> torch.Tensor:
-                # 放弃发生依赖问题的 torchaudio，改用 librosa 进行读取和重采样
-                waveform, sr = librosa.load(wav_path, sr=16000)
-                waveform = torch.from_numpy(waveform).unsqueeze(0)  # shape: (1, T)
+                waveform, sr = torchaudio.load(wav_path)
+                if sr != 16000:
+                    waveform = torchaudio.functional.resample(
+                        waveform, orig_freq=sr, new_freq=16000
+                    )
 
                 feat = self._kaldi.fbank(
                     waveform,
