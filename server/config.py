@@ -18,6 +18,13 @@ ENV_MODE = os.getenv("ENV_MODE", "local").lower()
 
 # --- Storage Path Retrieval Logic ---
 if ENV_MODE == "colab":
+    try:
+        from google.colab import drive  # type: ignore # noqa: E402
+
+        drive.mount("/content/drive")
+    except ImportError:
+        logger.warning("google.colab module not found, skipping Drive mount.")
+
     # Google Drive mounting paths
     ASSETS_DIR = os.getenv(
         "COLAB_ASSETS_DIR", "/content/drive/MyDrive/gpt-sovits/assets"
