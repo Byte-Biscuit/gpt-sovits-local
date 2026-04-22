@@ -84,6 +84,9 @@ class SpeakerTrainer:
         # 兼容 s2_train.py 的启动逻辑，默认指定单卡 0号卡
         if "gpu_numbers" not in s2_config["train"]:
             s2_config["train"]["gpu_numbers"] = "0"
+            
+        if "save_every_epoch" not in s2_config["train"]:
+            s2_config["train"]["save_every_epoch"] = 4
 
         # 默认填入对应的底模权重文件路径
         s2_config["train"]["pretrained_s2G"] = os.path.join(self.s2_pretrained_dir, f"s2G{self.version}.pth")
@@ -134,6 +137,9 @@ class SpeakerTrainer:
         if "gpu_numbers" not in s1_config["train"]:
             s1_config["train"]["gpu_numbers"] = "0"
             
+        if "save_every_n_epoch" not in s1_config["train"]:
+            s1_config["train"]["save_every_n_epoch"] = 5
+
         # 设置 GPT (s1) 预训练底模所在路径，兼容训练时未指定报错
         # v2Pro 和 v2ProPlus 通常使用的是此固定底模
         s1_config["train"]["pretrained_s1"] = os.path.join(PRETRAINED_DIR, "gsv-v2final-pretrained", "s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt")
