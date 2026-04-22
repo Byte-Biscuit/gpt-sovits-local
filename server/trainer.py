@@ -102,6 +102,9 @@ class SpeakerTrainer:
 
         # 保存时使用名称，避免 AttributeError: 'HParams' object has no attribute 'name'
         s2_config["name"] = self.speaker
+        
+        # 最终导出的预训练直接可用权重的路径
+        s2_config["save_weight_dir"] = self.model_out_dir
 
         # 默认填入对应的底模权重文件路径
         s2_config["train"]["pretrained_s2G"] = os.path.join(
@@ -165,6 +168,9 @@ class SpeakerTrainer:
 
         # 兼容最新版保存名
         s1_config["name"] = self.speaker
+        
+        # 最终导出的预训练直接可用权重的路径
+        s1_config["train"]["half_weights_save_dir"] = self.model_out_dir
 
         # 设置 GPT (s1) 预训练底模所在路径，兼容训练时未指定报错
         # v2Pro 和 v2ProPlus 通常使用的是此固定底模
