@@ -228,7 +228,9 @@ class TextAudioSpeakerCollate:
         text_padded.zero_()
 
         if self.is_v2Pro:
-            sv_embs = torch.FloatTensor(len(batch), 20480)
+            # 动态获取第一个样本里 sv tensor 的展平维度，以兼容原版的 20480 或者更新的 192 (ERes2NetV2)
+            example_sv_dim = batch[0][4].view(-1).size(0)
+            sv_embs = torch.FloatTensor(len(batch), example_sv_dim)
 
         for i in range(len(ids_sorted_decreasing)):
             row = batch[ids_sorted_decreasing[i]]
@@ -250,7 +252,7 @@ class TextAudioSpeakerCollate:
             text_lengths[i] = text.size(0)
 
             if self.is_v2Pro:
-                sv_embs[i] = row[4]
+                sv_embs[i] = row[4].view(-1)
         if self.is_v2Pro:
             return (
                 ssl_padded,

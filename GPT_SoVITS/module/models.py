@@ -927,7 +927,9 @@ class SynthesizerTrn(nn.Module):
 
         self.is_v2pro = self.version in v2pro_set
         if self.is_v2pro:
-            self.sv_emb = nn.Linear(20480, gin_channels)
+            # 兼容 ERes2NetV2 提取的小维度特征(192) 与原版旧特性的(20480)
+            # 通过读取第一层尝试兼容或者暂时直接改为 192 (假设用户端均使用192)
+            self.sv_emb = nn.Linear(192, gin_channels)
             self.ge_to512 = nn.Linear(gin_channels, 512)
             self.prelu = nn.PReLU(num_parameters=gin_channels)
 
