@@ -94,6 +94,11 @@ class SpeakerTrainer:
         # 数据集路径对齐
         s2_config["data"]["exp_dir"] = self.exp_dir
 
+        # 兼容最新版本的 version 字段
+        if "model" not in s2_config:
+            s2_config["model"] = {}
+        s2_config["model"]["version"] = self.version
+
         # 保存特定于说话人的配置文件
         with open(self.s2_config_path, "w", encoding="utf-8") as f:
             json.dump(s2_config, f, indent=4, ensure_ascii=False)
@@ -133,6 +138,11 @@ class SpeakerTrainer:
             self.exp_dir, "6-name2semantic.tsv"
         )
         s1_config["data"]["bert_dir"] = os.path.join(self.exp_dir, "3-bert")
+
+        # 兼容 s1_train.py 的 version 字段
+        if "model" not in s1_config:
+            s1_config["model"] = {}
+        s1_config["model"]["version"] = self.version
 
         with open(self.s1_config_path, "w", encoding="utf-8") as f:
             yaml.dump(s1_config, f, default_flow_style=False, allow_unicode=True)
