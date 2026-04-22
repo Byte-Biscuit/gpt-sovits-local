@@ -232,17 +232,19 @@ def run(rank, n_gpus, hps):
         ):
             if rank == 0:
                 logger.info("loaded pretrained %s" % hps.train.pretrained_s2G)
+            
+            dict_s2G = torch.load(hps.train.pretrained_s2G, map_location="cpu", weights_only=False)["weight"]
+            target_net_g = net_g.module if torch.cuda.is_available() else net_g
+            state_dict_g = target_net_g.state_dict()
+            for k in list(dict_s2G.keys()):
+                if k in state_dict_g and dict_s2G[k].shape != state_dict_g[k].shape:
+                    if rank == 0:
+                        logger.warning("Generator key %s dimension mismatch: %s vs %s. Ignored.", k, dict_s2G[k].shape, state_dict_g[k].shape)
+                    del dict_s2G[k]
+            
             print(
                 "loaded pretrained %s" % hps.train.pretrained_s2G,
-                net_g.module.load_state_dict(
-                    torch.load(hps.train.pretrained_s2G, map_location="cpu", weights_only=False)["weight"],
-                    strict=False,
-                )
-                if torch.cuda.is_available()
-                else net_g.load_state_dict(
-                    torch.load(hps.train.pretrained_s2G, map_location="cpu", weights_only=False)["weight"],
-                    strict=False,
-                ),
+                target_net_g.load_state_dict(dict_s2G, strict=False)
             )  ##测试不加载优化器
         if (
             hps.train.pretrained_s2D != ""
@@ -251,15 +253,19 @@ def run(rank, n_gpus, hps):
         ):
             if rank == 0:
                 logger.info("loaded pretrained %s" % hps.train.pretrained_s2D)
+            
+            dict_s2D = torch.load(hps.train.pretrained_s2D, map_location="cpu", weights_only=False)["weight"]
+            target_net_d = net_d.module if torch.cuda.is_available() else net_d
+            state_dict_d = target_net_d.state_dict()
+            for k in list(dict_s2D.keys()):
+                if k in state_dict_d and dict_s2D[k].shape != state_dict_d[k].shape:
+                    if rank == 0:
+                        logger.warning("Discriminator key %s dimension mismatch: %s vs %s. Ignored.", k, dict_s2D[k].shape, state_dict_d[k].shape)
+                    del dict_s2D[k]
+                    
             print(
                 "loaded pretrained %s" % hps.train.pretrained_s2D,
-                net_d.module.load_state_dict(
-                    torch.load(hps.train.pretrained_s2D, map_location="cpu", weights_only=False)["weight"], strict=False
-                )
-                if torch.cuda.is_available()
-                else net_d.load_state_dict(
-                    torch.load(hps.train.pretrained_s2D, map_location="cpu", weights_only=False)["weight"],
-                ),
+                target_net_d.load_state_dict(dict_s2D, strict=False)
             )
 
     # scheduler_g = torch.optim.lr_scheduler.ExponentialLR(optim_g, gamma=hps.train.lr_decay, last_epoch=epoch_str - 2)
