@@ -44,7 +44,7 @@ class SpeakerTrainer:
         # 获取 ASSETS 目录下对应的说话人目录
         self.speaker_assets_dir = os.path.join(ASSETS_DIR, speaker)
         os.makedirs(self.speaker_assets_dir, exist_ok=True)
-        
+
         # 设定训练输出目录: models/speaker/{speaker_name}/
         self.model_out_dir = os.path.join(MODELS_DIR, "speaker", speaker)
         os.makedirs(self.model_out_dir, exist_ok=True)
@@ -81,8 +81,14 @@ class SpeakerTrainer:
         s2_config["train"]["batch_size"] = batch_size
         s2_config["train"]["epochs"] = epochs
         s2_config["train"]["exp_name"] = self.speaker
+        # 兼容 s2_train.py 的启动逻辑，默认指定单卡 0号卡
+        if "gpu_numbers" not in s2_config["train"]:
+            s2_config["train"]["gpu_numbers"] = "0"
+
         # 设置训练输出目录，放到 models/speaker/音色人/SoVITS_weights
-        s2_config["train"]["save_dir"] = os.path.join(self.model_out_dir, "SoVITS_weights")
+        s2_config["train"]["save_dir"] = os.path.join(
+            self.model_out_dir, "SoVITS_weights"
+        )
         os.makedirs(s2_config["train"]["save_dir"], exist_ok=True)
 
         # 数据集路径对齐
@@ -116,6 +122,9 @@ class SpeakerTrainer:
         s1_config["train"]["batch_size"] = batch_size
         s1_config["train"]["epochs"] = epochs
         s1_config["train"]["exp_name"] = self.speaker
+        if "gpu_numbers" not in s1_config["train"]:
+            s1_config["train"]["gpu_numbers"] = "0"
+
         s1_config["train"]["save_dir"] = os.path.join(self.model_out_dir, "GPT_weights")
         os.makedirs(s1_config["train"]["save_dir"], exist_ok=True)
 
@@ -139,8 +148,8 @@ class SpeakerTrainer:
         logger.info("配置准备完毕！请参考以下命令分别启动 SoVITS 和 GPT 的微调训练：")
         logger.info("=" * 50)
 
-        sovits_cmd = f"python GPT_SoVITS/s2_train.py --config {self.s2_config_path}"
-        gpt_cmd = f"python GPT_SoVITS/s1_train.py --config_file {self.s1_config_path}"
+        sovits_cmd = f"uv run GPT_SoVITS/s2_train.py --config {self.s2_config_path}"
+        gpt_cmd = f"uv run GPT_SoVITS/s1_train.py --config_file {self.s1_config_path}"
 
         logger.info("\n【1. 训练 SoVITS 声学模型】")
         logger.info(
