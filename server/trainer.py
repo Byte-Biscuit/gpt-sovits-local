@@ -180,8 +180,10 @@ class SpeakerTrainer:
         # 最终导出的预训练直接可用权重的路径
         s1_config["train"]["half_weights_save_dir"] = self.model_out_dir
         
-        # 兼容 s1_train.py (line 88 寻找输出根目录的需求)
+        # 兼容 s1_train.py (Lightning模块寻找根目录变量的需求)
         s1_config["output_dir"] = self.model_out_dir
+        s1_config["train_semantic_path"] = os.path.join(self.exp_dir, "6-name2semantic.tsv")
+        s1_config["train_phoneme_path"] = os.path.join(self.exp_dir, "2-name2text.txt")
 
         # 设置 GPT (s1) 预训练底模所在路径，兼容训练时未指定报错
         # v2Pro 和 v2ProPlus 通常使用的是此固定底模
