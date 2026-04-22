@@ -49,10 +49,15 @@ else:
     ASSETS_DIR = os.getenv("LOCAL_ASSETS_DIR", str(PROJECT_ROOT / "assets"))
     MODELS_DIR = os.getenv("LOCAL_MODELS_DIR", str(PROJECT_ROOT / "models"))
 
+# 在Colab环境中使用该参数，主要用于避免训练时的Drive I/O导致的极速降低问题
+# 在需要时直接读取此目录路径
+TMP_MODELS_DIR = "/content/tmp_models"
+
 # GPT-SoVITS Pretrained Models Directory
 # We use the original project path as default because it is now mapped via symlink in Colab
 # This ensures maximum compatibility with official code while using Drive storage.
 PRETRAINED_DIR = str(PROJECT_ROOT / "GPT_SoVITS" / "pretrained_models")
+
 
 # Training intermediate products and experimental logs
 # Redefined: These are now stored within the speaker's folder in ASSETS_DIR for better organization.
@@ -63,6 +68,5 @@ def get_speaker_logs_dir(speaker_name: str) -> str:
     return logs_path
 
 
-# --- Deprecated: Global LOGS_DIR has been replaced by per-speaker logs ---
-# Use get_speaker_logs_dir(speaker_name) instead for training outputs.
-# System-wide application logs are still managed by logger.py.
+def is_colab() -> bool:
+    return ENV_MODE == "colab"

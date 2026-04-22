@@ -27,7 +27,14 @@ from pathlib import Path
 
 import yaml
 
-from server.config import ASSETS_DIR, MODELS_DIR, PRETRAINED_DIR, get_speaker_logs_dir
+from server.config import (
+    ASSETS_DIR,
+    MODELS_DIR,
+    PRETRAINED_DIR,
+    TMP_MODELS_DIR,
+    get_speaker_logs_dir,
+    is_colab,
+)
 from server.logger import setup_logging
 
 logger = logging.getLogger("server.trainer")
@@ -45,8 +52,12 @@ class SpeakerTrainer:
         self.speaker_assets_dir = os.path.join(ASSETS_DIR, speaker)
         os.makedirs(self.speaker_assets_dir, exist_ok=True)
 
-        # 设定训练输出目录: models/speaker/{speaker_name}/
-        self.model_out_dir = os.path.join(MODELS_DIR, "speaker", speaker)
+        if is_colab():
+            # 如果是 colab，将实际写入目录放到本地 /content 下以提高 IO 速度
+            self.model_out_dir = os.path.join(TMP_MODELS_DIR, "speaker", speaker)
+        else:
+            self.model_out_dir = os.path.join(MODELS_DIR, "speaker", speaker)
+
         os.makedirs(self.model_out_dir, exist_ok=True)
 
         # 预训练模型的路径，注意由于文件结构原因目前v2Pro/v2ProPlus的预训练模型都放在 v2Pro 文件夹
@@ -102,7 +113,7 @@ class SpeakerTrainer:
 
         # 保存时使用名称，避免 AttributeError: 'HParams' object has no attribute 'name'
         s2_config["name"] = self.speaker
-        
+
         # 最终导出的预训练直接可用权重的路径
         s2_config["save_weight_dir"] = self.model_out_dir
 
@@ -114,11 +125,8 @@ class SpeakerTrainer:
             self.s2_pretrained_dir, f"s2D{self.version}.pth"
         )
 
-        # 设置训练输出目录，放到 models/speaker/音色人/SoVITS_weights
-        s2_config["train"]["save_dir"] = os.path.join(
-            self.model_out_dir, "SoVITS_weights"
-        )
-        os.makedirs(s2_config["train"]["save_dir"], exist_ok=True)
+        # 设置训练输出目录，放到本地临时目录/SoVITS_weights
+        s2_config["train"]["save_dir"] = self.model_out_dir
 
         # 数据集路径对齐
         s2_config["data"]["exp_dir"] = self.exp_dir
@@ -168,7 +176,7 @@ class SpeakerTrainer:
 
         # 兼容最新版保存名
         s1_config["name"] = self.speaker
-        
+
         # 最终导出的预训练直接可用权重的路径
         s1_config["train"]["half_weights_save_dir"] = self.model_out_dir
 
@@ -217,7 +225,7 @@ class SpeakerTrainer:
         )
         logger.info(f"执行终端执行：\n    {sovits_cmd}\n")
 
-        logger.info("【2. 训练 GPT 语言/韵律模型】")
+        logger.info("\n【2. 训练 GPT 语言/韵律模型】")
         logger.info("作用：学习该说话人的发音节奏、停顿习惯、语气起伏。")
         logger.info(f"执行终端执行：\n    {gpt_cmd}\n")
         logger.info("=" * 50)
